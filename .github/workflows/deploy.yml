@@ -3,6 +3,7 @@ name: Deploy Laravel to cPanel
 on:
   push:
     branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   web-deploy:
@@ -50,19 +51,38 @@ jobs:
         }
         EOF
 
-    - name: 📂 Upload ZIP Package to cPanel (Takes only a few seconds)
-      uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-      with:
-        server: ${{ secrets.CPANEL_FTP_SERVER }}
-        username: ${{ secrets.CPANEL_FTP_USERNAME }}
-        password: ${{ secrets.CPANEL_FTP_PASSWORD }}
-        server-dir: ${{ secrets.CPANEL_SERVER_DIR || './' }}
-        local-dir: ./deploy_pkg/
+    - name: 📂 Upload Files to cPanel via cURL (Firewall & Passive Port Safe)
+      env:
+        FTP_SERVER: ${{ secrets.CPANEL_FTP_SERVER }}
+        FTP_USER: ${{ secrets.CPANEL_FTP_USERNAME }}
+        FTP_PASS: ${{ secrets.CPANEL_FTP_PASSWORD }}
+        FTP_DIR: ${{ secrets.CPANEL_SERVER_DIR }}
+      run: |
+        TARGET_DIR="${FTP_DIR:-}"
+        # Clean leading and trailing slashes
+        TARGET_DIR=$(echo "$TARGET_DIR" | sed 's/^\///' | sed 's/\/$//')
+        
+        if [ -z "$TARGET_DIR" ] || [ "$TARGET_DIR" = "." ]; then
+          FTP_PATH="ftp://${FTP_SERVER}"
+        else
+          FTP_PATH="ftp://${FTP_SERVER}/${TARGET_DIR}"
+        fi
+
+        echo "Uploading deploy_extract.php..."
+        curl --max-time 60 --retry 3 -u "${FTP_USER}:${FTP_PASS}" -T deploy_pkg/deploy_extract.php "${FTP_PATH}/deploy_extract.php" || \
+        curl --ssl -k --max-time 60 --retry 3 -u "${FTP_USER}:${FTP_PASS}" -T deploy_pkg/deploy_extract.php "${FTP_PATH}/deploy_extract.php"
+
+        echo "Uploading release.zip..."
+        curl --max-time 300 --retry 3 -u "${FTP_USER}:${FTP_PASS}" -T deploy_pkg/release.zip "${FTP_PATH}/release.zip" || \
+        curl --ssl -k --max-time 300 --retry 3 -u "${FTP_USER}:${FTP_PASS}" -T deploy_pkg/release.zip "${FTP_PATH}/release.zip"
+
+        echo "Upload completed successfully!"
 
     - name: ⚡ Trigger Server Unzip Extraction
       run: |
-        echo "Extracting release on server..."
+        echo "Extracting release on cPanel server..."
+        sleep 2
         curl -s -k -L "http://${{ secrets.CPANEL_FTP_SERVER }}/deploy_extract.php?token=bikroybd24_deploy_token_9921" || true
         curl -s -k -L "https://bikroybd24.com/deploy_extract.php?token=bikroybd24_deploy_token_9921" || true
         curl -s -k -L "http://151.158.44.116/deploy_extract.php?token=bikroybd24_deploy_token_9921" || true
-        echo "Deploy workflow finished!"
+        echo "Deployment finished successfully!"
