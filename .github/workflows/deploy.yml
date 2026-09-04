@@ -6,7 +6,7 @@ on:
 
 jobs:
   web-deploy:
-    name: 🎉 Deploy Laravel to cPanel
+    name: 🎉 Fast Deploy Laravel to cPanel
     runs-on: ubuntu-latest
     steps:
     - name: 🚚 Checkout latest repository code
@@ -21,20 +21,48 @@ jobs:
     - name: 📦 Install Composer Dependencies (Production)
       run: composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
 
-    - name: 📂 Sync Files to cPanel via FTP
+    - name: 🗜️ Package Application into ZIP Archive
+      run: |
+        mkdir -p deploy_pkg
+        zip -r deploy_pkg/release.zip . -x "*.git*" "*.github*" "deploy_pkg/*" "tests/*" ".env*" "frontend/*" "backend/*"
+        
+        cat << 'EOF' > deploy_pkg/deploy_extract.php
+        <?php
+        $secret = 'bikroybd24_deploy_token_9921';
+        if (isset($_GET['token']) && $_GET['token'] === $secret) {
+            $zipFile = __DIR__ . '/release.zip';
+            if (!file_exists($zipFile)) {
+                die("Error: release.zip not found in " . __DIR__);
+            }
+            $zip = new ZipArchive;
+            if ($zip->open($zipFile) === TRUE) {
+                $zip->extractTo(__DIR__);
+                $zip->close();
+                @unlink($zipFile);
+                @unlink(__FILE__);
+                echo "SUCCESS: Application extracted and updated successfully!";
+            } else {
+                echo "FAILED: Could not open release.zip";
+            }
+        } else {
+            http_response_code(403);
+            echo "Forbidden: Invalid deploy token";
+        }
+        EOF
+
+    - name: 📂 Upload ZIP Package to cPanel (Takes only a few seconds)
       uses: SamKirkland/FTP-Deploy-Action@v4.3.5
       with:
         server: ${{ secrets.CPANEL_FTP_SERVER }}
         username: ${{ secrets.CPANEL_FTP_USERNAME }}
         password: ${{ secrets.CPANEL_FTP_PASSWORD }}
         server-dir: ${{ secrets.CPANEL_SERVER_DIR || './' }}
-        exclude: |
-          **/.git*
-          **/.git*/**
-          **/node_modules/**
-          **/frontend/**
-          **/backend/**
-          **/tests/**
-          .env.example
-          .gitignore
-          README.md
+        local-dir: ./deploy_pkg/
+
+    - name: ⚡ Trigger Server Unzip Extraction
+      run: |
+        echo "Extracting release on server..."
+        curl -s -k -L "http://${{ secrets.CPANEL_FTP_SERVER }}/deploy_extract.php?token=bikroybd24_deploy_token_9921" || true
+        curl -s -k -L "https://bikroybd24.com/deploy_extract.php?token=bikroybd24_deploy_token_9921" || true
+        curl -s -k -L "http://151.158.44.116/deploy_extract.php?token=bikroybd24_deploy_token_9921" || true
+        echo "Deploy workflow finished!"
