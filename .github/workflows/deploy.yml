@@ -6,19 +6,19 @@ on:
 
 jobs:
   web-deploy:
-    name: 🎉 Deploy to cPanel / Shared Hosting
+    name: 🎉 Deploy Laravel to cPanel
     runs-on: ubuntu-latest
     steps:
-    - name: 🚚 Get latest code
+    - name: 🚚 Checkout latest repository code
       uses: actions/checkout@v4
 
-    - name: ⚙️ Setup PHP
+    - name: ⚙️ Setup PHP 8.2
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.2'
-        extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, bcmath, curl
+        extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, bcmath, curl, zip, gd
 
-    - name: 📦 Install Composer Dependencies
+    - name: 📦 Install Composer Dependencies (Production)
       run: composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
 
     - name: 📂 Sync Files to cPanel via FTP
@@ -27,7 +27,7 @@ jobs:
         server: ${{ secrets.CPANEL_FTP_SERVER }}
         username: ${{ secrets.CPANEL_FTP_USERNAME }}
         password: ${{ secrets.CPANEL_FTP_PASSWORD }}
-        server-dir: ${{ secrets.CPANEL_SERVER_DIR || 'public_html/' }}
+        server-dir: ${{ secrets.CPANEL_SERVER_DIR || './' }}
         exclude: |
           **/.git*
           **/.git*/**
@@ -36,4 +36,5 @@ jobs:
           **/backend/**
           **/tests/**
           .env.example
+          .gitignore
           README.md
